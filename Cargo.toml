@@ -1,12 +1,11 @@
 [package]
 name = "cut-optimizer-2d-server"
-version = "0.1.0"
+version = "0.1.2"
 authors = ["Jason Rodney Hansen <jasonrodneyhansen@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-# cut-optimizer-2d = { version = "0.1.1", features = ["serialize"] }
-cut-optimizer-2d = { path = "../cut-optimizer-2d", features = ["serialize"] }
+cut-optimizer-2d = { version = "0.1.2", features = ["serialize"] }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 serde = { version = "1.0", features = ["derive"] }
