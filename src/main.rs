@@ -1,6 +1,7 @@
 use cut_optimizer_2d::{CutPiece, Optimizer, StockPiece};
 use serde::{Deserialize, Serialize};
-use std::convert::Infallible;
+use std::{convert::Infallible, net::SocketAddr};
+use structopt::StructOpt;
 use tokio::sync::oneshot;
 use warp::Filter;
 
@@ -38,14 +39,36 @@ struct ErrorMessage {
     error: String,
 }
 
+#[derive(Debug, StructOpt)]
+#[structopt(
+    name = "Cut Optimizer 2D Server",
+    about = "A cut optimizer app server for optimizing rectangular cut pieces from sheet goods.",
+    author = "Jason Hansen <jasonrodneyhansen@gmail.com>"
+)]
+struct Opt {
+    /// IP address to listen on
+    #[structopt(short = "i", long = "ip", default_value = "127.0.0.1")]
+    ip: String,
+
+    /// Port to listen on
+    #[structopt(short = "p", long = "port", default_value = "3030")]
+    port: u16,
+}
+
 #[tokio::main]
 async fn main() {
+    let opt = Opt::from_args();
+
+    let addr: SocketAddr = format!("{}:{}", opt.ip, opt.port).parse().unwrap();
+
+    println!("Listening on {}", addr);
+
     let optimize = warp::path!("optimize")
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
         .and_then(optimize);
 
-    warp::serve(optimize).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(optimize).run(addr).await;
 }
 
 async fn optimize(input: OptimizerInput) -> Result<impl warp::Reply, Infallible> {
