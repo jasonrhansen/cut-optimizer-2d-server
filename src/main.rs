@@ -53,6 +53,10 @@ struct Opt {
     /// Port to listen on
     #[structopt(short = "p", long = "port", default_value = "3030")]
     port: u16,
+
+    /// Maximum length of request body
+    #[structopt(long = "max-content-length", default_value = "32896")]
+    max_content_length: u64,
 }
 
 #[tokio::main]
@@ -65,7 +69,7 @@ async fn main() {
 
     let optimize = warp::path!("optimize")
         .and(warp::filters::method::post())
-        .and(warp::body::content_length_limit(1024 * 32))
+        .and(warp::body::content_length_limit(opt.max_content_length))
         .and(warp::body::json())
         .and_then(optimize);
 
