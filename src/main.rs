@@ -1,4 +1,6 @@
 use cut_optimizer_2d::{CutPiece, Optimizer, StockPiece};
+use env_logger::Env;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr};
 use structopt::StructOpt;
@@ -41,8 +43,8 @@ struct ErrorMessage {
 
 #[derive(Debug, StructOpt)]
 #[structopt(
-    name = "Cut Optimizer 2D Server",
-    about = "A cut optimizer app server for optimizing rectangular cut pieces from sheet goods.",
+    name = "cut-optimizer-2d-server",
+    about = "A cut optimizer server for optimizing rectangular cut pieces from sheet goods.",
     author = "Jason Hansen <jasonrodneyhansen@gmail.com>"
 )]
 struct Opt {
@@ -57,21 +59,41 @@ struct Opt {
     /// Maximum length of request body
     #[structopt(long = "max-content-length", default_value = "32896")]
     max_content_length: u64,
+
+    /// Silence all log output
+    #[structopt(short = "q", long = "quiet")]
+    quiet: bool,
+
+    /// Verbose logging mode (-v, -vv, -vvv)
+    #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
+    verbose: usize,
 }
 
 #[tokio::main]
 async fn main() {
     let opt = Opt::from_args();
 
-    let addr: SocketAddr = format!("{}:{}", opt.ip, opt.port).parse().unwrap();
+    // Initialize logger
+    if !opt.quiet {
+        env_logger::Builder::from_env(Env::default().default_filter_or(match opt.verbose {
+            0 => "warn",
+            1 => "info",
+            2 => "debug",
+            _ => "trace",
+        }))
+        .init();
+    }
 
-    println!("Listening on {}", addr);
+    let addr: SocketAddr = format!("{}:{}", opt.ip, opt.port).parse().unwrap();
 
     let optimize = warp::path!("optimize")
         .and(warp::filters::method::post())
         .and(warp::body::content_length_limit(opt.max_content_length))
         .and(warp::body::json())
-        .and_then(optimize);
+        .and_then(optimize)
+        .with(warp::filters::log::custom(|info| {
+            info!("{} {} {}", info.method(), info.path(), info.status());
+        }));
 
     warp::serve(optimize).run(addr).await;
 }
@@ -86,7 +108,9 @@ async fn optimize(input: OptimizerInput) -> Result<impl warp::Reply, Infallible>
             OptimizeMethod::Guillotine => optimizer.optimize_guillotine(|_| {}),
             OptimizeMethod::Nested => optimizer.optimize_nested(|_| {}),
         };
-        let _ = tx.send(result);
+        if let Err(_) = tx.send(result) {
+            error!("Error: receiver side of channel closed before the result could be sent.");
+        }
     });
 
     match rx.await {
