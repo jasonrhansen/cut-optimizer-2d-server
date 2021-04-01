@@ -10,3 +10,4 @@ cut-optimizer-2d = { path = "../cut-optimizer-2d", features = ["serialize"] }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 serde = { version = "1.0", features = ["derive"] }
+rayon = "1.5.0"
