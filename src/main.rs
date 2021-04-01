@@ -64,6 +64,7 @@ async fn main() {
     println!("Listening on {}", addr);
 
     let optimize = warp::path!("optimize")
+        .and(warp::filters::method::post())
         .and(warp::body::content_length_limit(1024 * 32))
         .and(warp::body::json())
         .and_then(optimize);
