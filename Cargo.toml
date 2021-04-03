@@ -5,7 +5,7 @@ authors = ["Jason Rodney Hansen <jasonrodneyhansen@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-cut-optimizer-2d = { version = "0.1.2", features = ["serialize"] }
+cut-optimizer-2d = { version = "0.1", features = ["serialize"] }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 serde = { version = "1.0", features = ["derive"] }
@@ -13,3 +13,6 @@ rayon = "1.5.0"
 structopt = "0.3"
 log = "0.4"
 env_logger = "0.8"
+
+[dev-dependencies]
+serde_json = "1.0"
