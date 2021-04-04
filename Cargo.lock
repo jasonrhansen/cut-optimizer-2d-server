@@ -170,7 +170,6 @@ dependencies = [
  "log",
  "rayon",
  "serde",
- "serde_json",
  "structopt",
  "tokio",
  "warp",
