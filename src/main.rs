@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr};
 use structopt::StructOpt;
 use tokio::sync::oneshot;
-use warp::Filter;
+use warp::{hyper::StatusCode, Filter};
 
 #[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -127,19 +127,28 @@ async fn optimize(input: OptimizerInput) -> Result<impl warp::Reply, Infallible>
 
     match rx.await {
         Ok(result) => match result {
-            Ok(solution) => Ok(warp::reply::json(&solution)),
+            Ok(solution) => Ok(warp::reply::with_status(
+                warp::reply::json(&solution),
+                StatusCode::OK,
+            )),
             Err(cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece)) => {
-                Ok(warp::reply::json(&ErrorMessage {
-                    error: format!(
-                        "The following cut piece doesn't fit any stock pieces: {:?}",
-                        cut_piece
-                    ),
-                }))
+                Ok(warp::reply::with_status(
+                    warp::reply::json(&ErrorMessage {
+                        error: format!(
+                            "The following cut piece doesn't fit any stock pieces: {:?}",
+                            cut_piece
+                        ),
+                    }),
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                ))
             }
         },
-        Err(e) => Ok(warp::reply::json(&ErrorMessage {
-            error: e.to_string(),
-        })),
+        Err(e) => Ok(warp::reply::with_status(
+            warp::reply::json(&ErrorMessage {
+                error: e.to_string(),
+            }),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        )),
     }
 }
 
@@ -254,5 +263,41 @@ mod tests {
             .await;
 
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn non_fitting_price_should_return_unprocessable_entity() {
+        let api = optimize_filter(1024);
+        let non_fitting_input = r#"
+            {
+                "method": "guillotine",
+                "randomSeed": 1,
+                "cutWidth": 2,
+                "stockPieces": [
+                    {
+                        "width": 48,
+                        "length": 96,
+                        "patternDirection": "none"
+                    }
+                ],
+                "cutPieces": [
+                    {
+                        "externalId": 1,
+                        "width": 10,
+                        "length": 300,
+                        "patternDirection": "none",
+                        "canRotate": true
+                    }
+                ]
+            }
+        "#;
+        let resp = request()
+            .method("POST")
+            .path("/optimize")
+            .body(&non_fitting_input)
+            .reply(&api)
+            .await;
+
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }
