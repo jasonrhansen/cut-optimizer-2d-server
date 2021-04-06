@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, net::SocketAddr};
 use structopt::StructOpt;
 use tokio::sync::oneshot;
-use warp::{hyper::StatusCode, Filter};
+use warp::{
+    hyper::StatusCode,
+    reply::{Json, WithStatus},
+    Filter,
+};
 
 #[derive(Deserialize, Debug, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
@@ -37,8 +41,33 @@ impl Into<Optimizer> for OptimizerInput {
 }
 
 #[derive(Serialize, Debug)]
-struct ErrorMessage {
-    error: String,
+struct ErrorMessage<T: Serialize> {
+    message: String,
+    data: T,
+}
+
+#[derive(Serialize, Debug)]
+struct ApiError<T: Serialize> {
+    error: ErrorMessage<T>,
+}
+
+impl<T: Serialize> ApiError<T> {
+    fn new(message: String, data: T) -> Self {
+        ApiError {
+            error: ErrorMessage { message, data },
+        }
+    }
+}
+
+fn error_reply<T: Serialize>(
+    message: String,
+    data: T,
+    status_code: StatusCode,
+) -> WithStatus<Json> {
+    warp::reply::with_status(
+        warp::reply::json(&ApiError::new(message, data)),
+        status_code,
+    )
 }
 
 #[derive(Debug, StructOpt)]
@@ -131,22 +160,15 @@ async fn optimize(input: OptimizerInput) -> Result<impl warp::Reply, Infallible>
                 warp::reply::json(&solution),
                 StatusCode::OK,
             )),
-            Err(cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece)) => {
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&ErrorMessage {
-                        error: format!(
-                            "The following cut piece doesn't fit any stock pieces: {:?}",
-                            cut_piece
-                        ),
-                    }),
-                    StatusCode::UNPROCESSABLE_ENTITY,
-                ))
-            }
+            Err(cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece)) => Ok(error_reply(
+                "The following cut piece doesn't fit any stock pieces".to_string(),
+                cut_piece.clone(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            )),
         },
-        Err(e) => Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorMessage {
-                error: e.to_string(),
-            }),
+        Err(e) => Ok(error_reply(
+            "Couldn't receive result from channel".to_string(),
+            e.to_string(),
             StatusCode::INTERNAL_SERVER_ERROR,
         )),
     }
