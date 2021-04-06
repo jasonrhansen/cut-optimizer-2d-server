@@ -11,11 +11,21 @@ mod server;
 )]
 pub(crate) struct Opt {
     /// IP address to listen on
-    #[structopt(short = "i", long = "ip", default_value = "127.0.0.1")]
+    #[structopt(
+        short = "i",
+        long = "ip",
+        default_value = "127.0.0.1",
+        env = "CUT_OPTIMIZER_2D_IP"
+    )]
     ip: String,
 
     /// Port to listen on
-    #[structopt(short = "p", long = "port", default_value = "3030")]
+    #[structopt(
+        short = "p",
+        long = "port",
+        default_value = "3030",
+        env = "CUT_OPTIMIZER_2D_PORT"
+    )]
     port: u16,
 
     /// Maximum length of request body
