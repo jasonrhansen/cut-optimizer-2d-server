@@ -14,7 +14,7 @@ pub(crate) struct Opt {
     #[structopt(
         short = "i",
         long = "ip",
-        default_value = "127.0.0.1",
+        default_value = "0.0.0.0",
         env = "CUT_OPTIMIZER_2D_IP"
     )]
     ip: String,
