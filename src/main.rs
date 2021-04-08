@@ -1,4 +1,6 @@
 use env_logger::Env;
+use log::error;
+use std::net::SocketAddr;
 use structopt::StructOpt;
 
 mod server;
@@ -47,7 +49,12 @@ async fn main() {
 
     init_logger(&opt);
 
-    server::serve(&opt).await;
+    let addr = format!("{}:{}", opt.ip, opt.port);
+    if let Ok(socket_addr) = addr.parse::<SocketAddr>() {
+        server::serve(socket_addr, opt.max_content_length).await;
+    } else {
+        error!("Error parsing socket address: {}", addr);
+    }
 }
 
 fn init_logger(opt: &Opt) {

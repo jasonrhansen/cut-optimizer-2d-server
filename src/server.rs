@@ -1,4 +1,3 @@
-use crate::Opt;
 use cut_optimizer_2d::{CutPiece, Optimizer, StockPiece};
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -14,12 +13,12 @@ use warp::{
 mod tests;
 
 /// Run optimizer server
-pub(crate) fn serve(opt: &Opt) -> impl warp::Future {
-    let api = optimize_filter(opt.max_content_length).with(warp::filters::log::custom(|info| {
+pub(crate) fn serve(socket_addr: SocketAddr, max_content_length: u64) -> impl warp::Future {
+    let api = optimize_filter(max_content_length).with(warp::filters::log::custom(|info| {
         info!("{} {} {}", info.method(), info.path(), info.status());
     }));
 
-    warp::serve(api).run(socket_address(&opt))
+    warp::serve(api).run(socket_addr)
 }
 
 /// POST /optimize with JSON body
@@ -126,8 +125,4 @@ fn error_reply<T: Serialize>(
         warp::reply::json(&ApiError::new(message, data)),
         status_code,
     )
-}
-
-fn socket_address(opt: &Opt) -> SocketAddr {
-    format!("{}:{}", opt.ip, opt.port).parse().unwrap()
 }
