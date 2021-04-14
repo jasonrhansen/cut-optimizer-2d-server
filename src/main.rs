@@ -31,7 +31,11 @@ pub(crate) struct Opt {
     port: u16,
 
     /// Maximum length of request body
-    #[structopt(long = "max-content-length", default_value = "32896")]
+    #[structopt(
+        long = "max-content-length",
+        default_value = "32896",
+        env = "CUT_OPTIMIZER_MAX_CONTENT_LENGTH"
+    )]
     max_content_length: u64,
 
     /// Silence all log output
