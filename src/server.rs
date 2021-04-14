@@ -14,9 +14,11 @@ mod tests;
 
 /// Run optimizer server
 pub(crate) fn serve(socket_addr: SocketAddr, max_content_length: u64) -> impl warp::Future {
-    let api = optimize_filter(max_content_length).with(warp::filters::log::custom(|info| {
-        info!("{} {} {}", info.method(), info.path(), info.status());
-    }));
+    let api = optimize_filter(max_content_length)
+        .or(root())
+        .with(warp::filters::log::custom(|info| {
+            info!("{} {} {}", info.method(), info.path(), info.status());
+        }));
 
     warp::serve(api).run(socket_addr)
 }
@@ -25,11 +27,18 @@ pub(crate) fn serve(socket_addr: SocketAddr, max_content_length: u64) -> impl wa
 fn optimize_filter(
     max_content_length: u64,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("optimize")
+    warp::path("optimize")
         .and(warp::filters::method::post())
         .and(warp::body::content_length_limit(max_content_length))
         .and(warp::body::json())
         .and_then(optimize)
+}
+
+/// GET /
+fn root() -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path::end().and(warp::filters::method::get()).map(|| {
+        "Cut Optimizer"
+    })
 }
 
 /// Run optimizer in a thread pool
