@@ -1,9 +1,10 @@
 FROM ekidd/rust-musl-builder:stable as builder
 
+USER root
+
 RUN USER=root cargo new --bin cut-optimizer-2d-server
-WORKDIR ./cut-optimizer-2d-server
-COPY ./Cargo.lock ./Cargo.lock
-COPY ./Cargo.toml ./Cargo.toml
+WORKDIR /home/rust/src/cut-optimizer-2d-server
+COPY ./Cargo.* ./
 RUN cargo build --release
 RUN rm src/*.rs
 
