@@ -92,6 +92,7 @@ struct OptimizerInput {
     cut_width: usize,
     stock_pieces: Vec<StockPiece>,
     cut_pieces: Vec<CutPiece>,
+    allow_mixed_stock_sizes: Option<bool>,
 }
 
 impl Into<Optimizer> for OptimizerInput {
@@ -101,7 +102,8 @@ impl Into<Optimizer> for OptimizerInput {
             .set_random_seed(self.random_seed.unwrap_or(1))
             .set_cut_width(self.cut_width)
             .add_stock_pieces(self.stock_pieces)
-            .add_cut_pieces(self.cut_pieces);
+            .add_cut_pieces(self.cut_pieces)
+            .allow_mixed_stock_sizes(self.allow_mixed_stock_sizes.unwrap_or(true));
         optimizer
     }
 }
