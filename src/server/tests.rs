@@ -10,12 +10,14 @@ static TEST_INPUT: &str = r#"
             {
                 "width": 48,
                 "length": 96,
-                "patternDirection": "none"
+                "patternDirection": "none",
+                "price": 0
             },
             {
                 "width": 48,
                 "length": 120,
-                "patternDirection": "none"
+                "patternDirection": "none",
+                "price": 0
             }
         ],
         "cutPieces": [
@@ -121,7 +123,8 @@ async fn non_fitting_price_should_return_unprocessable_entity() {
                 {
                     "width": 48,
                     "length": 96,
-                    "patternDirection": "none"
+                    "patternDirection": "none",
+                    "price": 0
                 }
             ],
             "cutPieces": [
