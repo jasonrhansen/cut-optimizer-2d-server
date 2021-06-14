@@ -154,9 +154,9 @@ dependencies = [
 
 [[package]]
 name = "cut-optimizer-2d"
-version = "0.1.5"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ed5b959eb2a86f1ae7275d7d9488bf58972ceb217973c9be569c0fab3664acc"
+checksum = "57c253c8970009ead549eeff4e395265cf3b7850f29cbe7ddb5ad4134f250dd2"
 dependencies = [
  "fnv",
  "rand 0.8.3",
@@ -165,7 +165,7 @@ dependencies = [
 
 [[package]]
 name = "cut-optimizer-2d-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cut-optimizer-2d",
  "env_logger",

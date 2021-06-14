@@ -1,6 +1,6 @@
 [package]
 name = "cut-optimizer-2d-server"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jason Rodney Hansen <jasonrodneyhansen@gmail.com>"]
 repository = "https://github.com/jasonrhansen/cut-optimizer-2d-server.git"
 keywords = ["cuts", "optimize", "optimization", "bin-packing", "bin-packer"]
