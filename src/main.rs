@@ -1,11 +1,11 @@
-use env_logger::Env;
-use log::error;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use structopt::StructOpt;
+use tracing::{error, info};
+use tracing_subscriber::EnvFilter;
 
 mod server;
 
-#[derive(Debug, StructOpt)]
+#[derive(Default, Debug, StructOpt)]
 #[structopt(
     name = "cut-optimizer-2d-server",
     about = "A cut optimizer server for optimizing rectangular cut pieces from sheet goods.",
@@ -14,12 +14,12 @@ mod server;
 pub(crate) struct Opt {
     /// IP address to listen on
     #[structopt(
-        short = "i",
-        long = "ip",
+        short = "h",
+        long = "host",
         default_value = "0.0.0.0",
-        env = "CUT_OPTIMIZER_2D_IP"
+        env = "CUT_OPTIMIZER_2D_HOST"
     )]
-    ip: String,
+    host: String,
 
     /// Port to listen on
     #[structopt(
@@ -30,9 +30,17 @@ pub(crate) struct Opt {
     )]
     port: u16,
 
-    /// Maximum length of request body
-    #[structopt(long = "max-content-length", default_value = "32896")]
-    max_content_length: u64,
+    /// Timeout in seconds
+    #[structopt(long = "timeout", default_value = "60", env = "CUT_OPTIMIZER_TIMEOUT")]
+    timeout: u64,
+
+    /// Maximum number of concurrent requests
+    #[structopt(
+        long = "max-requests",
+        default_value = "100",
+        env = "CUT_OPTIMIZER_MAX_REQUESTS"
+    )]
+    max_requests: usize,
 
     /// Silence all log output
     #[structopt(short = "q", long = "quiet")]
@@ -47,24 +55,34 @@ pub(crate) struct Opt {
 async fn main() {
     let opt = Opt::from_args();
 
-    init_logger(&opt);
-
-    let addr = format!("{}:{}", opt.ip, opt.port);
-    if let Ok(socket_addr) = addr.parse::<SocketAddr>() {
-        server::serve(socket_addr, opt.max_content_length).await;
+    init_tracing(&opt);
+    if let Ok(mut addrs) = (opt.host.as_ref(), opt.port).to_socket_addrs() {
+        if let Some(addr) = addrs.next() {
+            info!("Listening on {}:{}", opt.host, opt.port);
+            server::serve(addr, &opt).await;
+        } else {
+            error!("Unable to resolve host: {}", opt.host);
+        }
     } else {
-        error!("Error parsing socket address: {}", addr);
+        error!("Error parsing socket address: {}:{}", opt.host, opt.port);
     }
 }
 
-fn init_logger(opt: &Opt) {
+fn init_tracing(opt: &Opt) {
     if !opt.quiet {
-        env_logger::Builder::from_env(Env::default().default_filter_or(match opt.verbose {
-            0 => "warn",
-            1 => "info",
-            2 => "debug",
-            _ => "trace",
-        }))
-        .init();
+        if std::env::var("RUST_LOG").is_err() {
+            std::env::set_var(
+                "RUST_LOG",
+                match opt.verbose {
+                    0 => "warn",
+                    1 => "info",
+                    2 => "debug",
+                    _ => "trace",
+                },
+            )
+        }
+        tracing_subscriber::fmt::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .init();
     }
 }

@@ -1,71 +1,86 @@
-use cut_optimizer_2d::{CutPiece, Optimizer, StockPiece};
-use log::{error, info};
+use axum::error_handling::HandleErrorLayer;
+use axum::{extract, routing::post, Json, Router};
+use cut_optimizer_2d::{CutPiece, Optimizer, Solution, StockPiece};
+use http::StatusCode;
+use hyper::Body;
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, net::SocketAddr};
+use serde_json::{json, Value};
+use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::sync::oneshot;
-use warp::{
-    hyper::StatusCode,
-    reply::{Json, WithStatus},
-    Filter,
-};
+use tower::{BoxError, ServiceBuilder};
+use tower_http::compression::CompressionLayer;
+use tower_http::trace::TraceLayer;
+use tracing::error;
+
+use crate::Opt;
 
 #[cfg(test)]
 mod tests;
 
 /// Run optimizer server
-pub(crate) fn serve(socket_addr: SocketAddr, max_content_length: u64) -> impl warp::Future {
-    let api = optimize_filter(max_content_length).with(warp::filters::log::custom(|info| {
-        info!("{} {} {}", info.method(), info.path(), info.status());
-    }));
-
-    warp::serve(api).run(socket_addr)
+pub(crate) async fn serve(socket_addr: SocketAddr, opt: &Opt) {
+    // run it with hyper on localhost:3000
+    hyper::Server::bind(&socket_addr)
+        .serve(app(opt).into_make_service())
+        .await
+        .unwrap();
 }
 
-/// POST /optimize with JSON body
-fn optimize_filter(
-    max_content_length: u64,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path!("optimize")
-        .and(warp::filters::method::post())
-        .and(warp::body::content_length_limit(max_content_length))
-        .and(warp::body::json())
-        .and_then(optimize)
+fn app(opt: &Opt) -> Router<Body> {
+    let middleware_stack = ServiceBuilder::new()
+        .layer(HandleErrorLayer::new(handle_error))
+        // Return an error after 30 seconds
+        .timeout(Duration::from_secs(opt.timeout))
+        // Shed load if we're receiving too many requests
+        .load_shed()
+        // Process at most 100 requests concurrently
+        .concurrency_limit(opt.max_requests)
+        // Tracing
+        .layer(TraceLayer::new_for_http())
+        // Compress response bodies
+        .layer(CompressionLayer::new());
+
+    Router::new()
+        .route("/optimize", post(optimize))
+        .layer(middleware_stack)
 }
 
 /// Run optimizer in a thread pool
-async fn optimize(input: OptimizerInput) -> Result<impl warp::Reply, Infallible> {
+async fn optimize(
+    extract::Json(payload): extract::Json<OptimizerInput>,
+) -> Result<Json<Solution>, OptimizeError> {
     let (tx, rx) = oneshot::channel();
 
     rayon::spawn(move || {
-        let method = input.method;
-        let optimizer: Optimizer = input.into();
+        let method = payload.method;
+        let optimizer: Optimizer = payload.into();
         let result = match method {
             OptimizeMethod::Guillotine => optimizer.optimize_guillotine(|_| {}),
             OptimizeMethod::Nested => optimizer.optimize_nested(|_| {}),
         };
-        if let Err(_) = tx.send(result) {
+        if tx.send(result).is_err() {
             error!("Error: receiver side of channel closed before the result could be sent.");
         }
     });
 
-    match rx.await {
-        Ok(result) => match result {
-            Ok(solution) => Ok(warp::reply::with_status(
-                warp::reply::json(&solution),
-                StatusCode::OK,
-            )),
-            Err(cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece)) => Ok(error_reply(
-                "The following cut piece doesn't fit any stock pieces".to_string(),
-                cut_piece.clone(),
-                StatusCode::UNPROCESSABLE_ENTITY,
-            )),
-        },
-        Err(e) => Ok(error_reply(
-            "Couldn't receive result from channel".to_string(),
-            e.to_string(),
+    let result = rx.await.map_err(|e| {
+        error(
             StatusCode::INTERNAL_SERVER_ERROR,
-        )),
-    }
+            "Couldn't receive result from channel",
+            e.to_string(),
+        )
+    })?;
+
+    let solution = result.map_err(|e| match e {
+        cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece) => error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Cut piece doesn't fit in any stock pieces",
+            cut_piece,
+        ),
+    })?;
+
+    Ok(Json(solution))
 }
 
 #[derive(Deserialize, Debug, Clone, Copy)]
@@ -86,45 +101,31 @@ struct OptimizerInput {
     allow_mixed_stock_sizes: Option<bool>,
 }
 
-impl Into<Optimizer> for OptimizerInput {
-    fn into(self) -> Optimizer {
+impl From<OptimizerInput> for Optimizer {
+    fn from(input: OptimizerInput) -> Self {
         let mut optimizer = Optimizer::new();
         optimizer
-            .set_random_seed(self.random_seed.unwrap_or(1))
-            .set_cut_width(self.cut_width)
-            .add_stock_pieces(self.stock_pieces)
-            .add_cut_pieces(self.cut_pieces)
-            .allow_mixed_stock_sizes(self.allow_mixed_stock_sizes.unwrap_or(true));
+            .set_random_seed(input.random_seed.unwrap_or(1))
+            .set_cut_width(input.cut_width)
+            .add_stock_pieces(input.stock_pieces)
+            .add_cut_pieces(input.cut_pieces)
+            .allow_mixed_stock_sizes(input.allow_mixed_stock_sizes.unwrap_or(true));
         optimizer
     }
 }
 
-#[derive(Serialize, Debug)]
-struct ErrorMessage<T: Serialize> {
-    message: String,
-    data: T,
+fn handle_error(err: BoxError) -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Something went wrong: {}", err),
+    )
 }
 
-#[derive(Serialize, Debug)]
-struct ApiError<T: Serialize> {
-    error: ErrorMessage<T>,
-}
+type OptimizeError = (StatusCode, Json<Value>);
 
-impl<T: Serialize> ApiError<T> {
-    fn new(message: String, data: T) -> Self {
-        ApiError {
-            error: ErrorMessage { message, data },
-        }
-    }
-}
-
-fn error_reply<T: Serialize>(
-    message: String,
-    data: T,
-    status_code: StatusCode,
-) -> WithStatus<Json> {
-    warp::reply::with_status(
-        warp::reply::json(&ApiError::new(message, data)),
+fn error<T: Serialize>(status_code: StatusCode, message: &str, data: T) -> OptimizeError {
+    (
         status_code,
+        Json(json!({ "message": message, "data": data })),
     )
 }

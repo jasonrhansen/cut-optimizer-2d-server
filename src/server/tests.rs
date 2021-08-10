@@ -1,5 +1,7 @@
-use super::optimize_filter;
-use warp::{hyper::StatusCode, test::request};
+use super::*;
+use http::{Request, StatusCode};
+use structopt::StructOpt;
+use tower::ServiceExt;
 
 static TEST_INPUT: &str = r#"
     {
@@ -39,42 +41,47 @@ static TEST_INPUT: &str = r#"
     }
 "#;
 
+fn test_app() -> BoxRoute<Body> {
+    app(&Opt::from_iter(&[
+        "cut-optimizer-2d-server",
+        "--timeout",
+        "60",
+        "--max-requests",
+        "100",
+    ]))
+}
+
 #[tokio::test]
 async fn optimize_should_return_ok() {
-    let api = optimize_filter(10240);
-    let resp = request()
-        .method("POST")
-        .path("/optimize")
-        .body(&TEST_INPUT)
-        .reply(&api)
-        .await;
+    let resp = test_app()
+        .oneshot(
+            Request::builder()
+                .header("Content-Type", "application/json")
+                .method("POST")
+                .uri("/optimize")
+                .body(TEST_INPUT.into())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
-#[tokio::test]
-async fn content_length_too_long_should_return_payload_too_large() {
-    let api = optimize_filter(100);
-    let resp = request()
-        .method("POST")
-        .path("/optimize")
-        .body(&TEST_INPUT)
-        .reply(&api)
-        .await;
-
-    assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
-}
-
 async fn optimize_with_wrong_http_method(http_method: &str) {
-    let api = optimize_filter(10240);
-    let resp = request()
-        .method(http_method)
-        .path("/optimize")
-        .body(&TEST_INPUT)
-        .reply(&api)
-        .await;
+    let resp = test_app()
+        .oneshot(
+            Request::builder()
+                .header("Content-Type", "application/json")
+                .method(http_method)
+                .uri("/optimize")
+                .body(TEST_INPUT.into())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -99,21 +106,25 @@ async fn optimize_with_put_should_fail() {
 
 #[tokio::test]
 async fn invalid_input_should_return_bad_request() {
-    let api = optimize_filter(1024);
     let invalid_input = "{}";
-    let resp = request()
-        .method("POST")
-        .path("/optimize")
-        .body(&invalid_input)
-        .reply(&api)
-        .await;
+
+    let resp = test_app()
+        .oneshot(
+            Request::builder()
+                .header("Content-Type", "application/json")
+                .method("POST")
+                .uri("/optimize")
+                .body(invalid_input.into())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
 async fn non_fitting_price_should_return_unprocessable_entity() {
-    let api = optimize_filter(1024);
     let non_fitting_input = r#"
         {
             "method": "guillotine",
@@ -138,12 +149,18 @@ async fn non_fitting_price_should_return_unprocessable_entity() {
             ]
         }
     "#;
-    let resp = request()
-        .method("POST")
-        .path("/optimize")
-        .body(&non_fitting_input)
-        .reply(&api)
-        .await;
+
+    let resp = test_app()
+        .oneshot(
+            Request::builder()
+                .header("Content-Type", "application/json")
+                .method("POST")
+                .uri("/optimize")
+                .body(non_fitting_input.into())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
 
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
