@@ -1,6 +1,6 @@
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 use structopt::StructOpt;
-use tracing::error;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 mod server;
@@ -14,12 +14,12 @@ mod server;
 pub(crate) struct Opt {
     /// IP address to listen on
     #[structopt(
-        short = "i",
-        long = "ip",
+        short = "h",
+        long = "host",
         default_value = "0.0.0.0",
-        env = "CUT_OPTIMIZER_2D_IP"
+        env = "CUT_OPTIMIZER_2D_HOST"
     )]
-    ip: String,
+    host: String,
 
     /// Port to listen on
     #[structopt(
@@ -56,12 +56,15 @@ async fn main() {
     let opt = Opt::from_args();
 
     init_tracing(&opt);
-
-    let addr = format!("{}:{}", opt.ip, opt.port);
-    if let Ok(socket_addr) = addr.parse::<SocketAddr>() {
-        server::serve(socket_addr, &opt).await;
+    if let Ok(mut addrs) = (opt.host.as_ref(), opt.port).to_socket_addrs() {
+        if let Some(addr) = addrs.next() {
+            info!("Listening on {}:{}", opt.host, opt.port);
+            server::serve(addr, &opt).await;
+        } else {
+            error!("Unable to resolve host: {}", opt.host);
+        }
     } else {
-        error!("Error parsing socket address: {}", addr);
+        error!("Error parsing socket address: {}:{}", opt.host, opt.port);
     }
 }
 

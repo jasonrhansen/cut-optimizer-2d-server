@@ -1,9 +1,10 @@
-use axum::{prelude::*, response::Json, routing::BoxRoute};
+use axum::error_handling::HandleErrorLayer;
+use axum::{extract, routing::post, Json, Router};
 use cut_optimizer_2d::{CutPiece, Optimizer, Solution, StockPiece};
 use http::StatusCode;
+use hyper::Body;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -26,47 +27,34 @@ pub(crate) async fn serve(socket_addr: SocketAddr, opt: &Opt) {
         .unwrap();
 }
 
-fn app(opt: &Opt) -> BoxRoute<Body> {
+fn app(opt: &Opt) -> Router<Body> {
     let middleware_stack = ServiceBuilder::new()
+        .layer(HandleErrorLayer::new(handle_error))
         // Return an error after 30 seconds
         .timeout(Duration::from_secs(opt.timeout))
         // Shed load if we're receiving too many requests
         .load_shed()
         // Process at most 100 requests concurrently
         .concurrency_limit(opt.max_requests)
+        // Tracing
         .layer(TraceLayer::new_for_http())
         // Compress response bodies
-        .layer(CompressionLayer::new())
-        .into_inner();
+        .layer(CompressionLayer::new());
 
-    route("/optimize", post(optimize))
+    Router::new()
+        .route("/optimize", post(optimize))
         .layer(middleware_stack)
-        .handle_error(|error: BoxError| {
-            let result = if error.is::<tower::timeout::error::Elapsed>() {
-                Ok(StatusCode::REQUEST_TIMEOUT)
-            } else {
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!(&format!("Unhandled internal error: {:?}", &error))),
-                ))
-            };
-
-            Ok::<_, Infallible>(result)
-        })
-        .boxed()
 }
 
-type OptimizeError = (StatusCode, Json<Value>);
-
 /// Run optimizer in a thread pool
-async fn optimize(input: extract::Json<OptimizerInput>) -> Result<Json<Solution>, OptimizeError> {
-    let input = input.0;
-
+async fn optimize(
+    extract::Json(payload): extract::Json<OptimizerInput>,
+) -> Result<Json<Solution>, OptimizeError> {
     let (tx, rx) = oneshot::channel();
 
     rayon::spawn(move || {
-        let method = input.method;
-        let optimizer: Optimizer = input.into();
+        let method = payload.method;
+        let optimizer: Optimizer = payload.into();
         let result = match method {
             OptimizeMethod::Guillotine => optimizer.optimize_guillotine(|_| {}),
             OptimizeMethod::Nested => optimizer.optimize_nested(|_| {}),
@@ -87,7 +75,7 @@ async fn optimize(input: extract::Json<OptimizerInput>) -> Result<Json<Solution>
     let solution = result.map_err(|e| match e {
         cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece) => error(
             StatusCode::UNPROCESSABLE_ENTITY,
-            "The following cut piece doesn't fit in any stock pieces",
+            "Cut piece doesn't fit in any stock pieces",
             cut_piece,
         ),
     })?;
@@ -125,6 +113,15 @@ impl From<OptimizerInput> for Optimizer {
         optimizer
     }
 }
+
+fn handle_error(err: BoxError) -> (StatusCode, String) {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        format!("Something went wrong: {}", err),
+    )
+}
+
+type OptimizeError = (StatusCode, Json<Value>);
 
 fn error<T: Serialize>(status_code: StatusCode, message: &str, data: T) -> OptimizeError {
     (
