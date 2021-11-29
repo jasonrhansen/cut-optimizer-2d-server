@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 edition = "2018"
 
 [dependencies]
-cut-optimizer-2d = { version = "0.2", features = ["serialize"] }
+cut-optimizer-2d = { version = "0.3", features = ["serialize"] }
 tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 serde = { version = "1.0", features = ["derive"] }
