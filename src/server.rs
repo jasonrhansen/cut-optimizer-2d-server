@@ -1,7 +1,7 @@
 use axum::error_handling::HandleErrorLayer;
 use axum::{extract, routing::post, Json, Router};
 use cut_optimizer_2d::{CutPiece, Optimizer, Solution, StockPiece};
-use http::StatusCode;
+use http::{Method, StatusCode, Uri};
 use hyper::Body;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -65,7 +65,7 @@ async fn optimize(
     });
 
     let result = rx.await.map_err(|e| {
-        error(
+        error_with_data(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Couldn't receive result from channel",
             e.to_string(),
@@ -73,7 +73,7 @@ async fn optimize(
     })?;
 
     let solution = result.map_err(|e| match e {
-        cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece) => error(
+        cut_optimizer_2d::Error::NoFitForCutPiece(cut_piece) => error_with_data(
             StatusCode::UNPROCESSABLE_ENTITY,
             "Cut piece doesn't fit in any stock pieces",
             cut_piece,
@@ -114,23 +114,24 @@ impl From<OptimizerInput> for Optimizer {
     }
 }
 
-async fn handle_error(err: BoxError) -> (StatusCode, String) {
+async fn handle_error(method: Method, uri: Uri, err: BoxError) -> OptimizeError {
     if err.is::<tower::timeout::error::Elapsed>() {
-        (
-            StatusCode::REQUEST_TIMEOUT,
-            "Request took too long".to_string(),
-        )
+        error(StatusCode::REQUEST_TIMEOUT, "Request took too long")
     } else {
-        (
+        error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Unhandled internal error: {}", err),
+            &format!("`{} {}` failed with {}", method, uri, err),
         )
     }
 }
 
 type OptimizeError = (StatusCode, Json<Value>);
 
-fn error<T: Serialize>(status_code: StatusCode, message: &str, data: T) -> OptimizeError {
+fn error(status_code: StatusCode, message: &str) -> OptimizeError {
+    (status_code, Json(json!({ "message": message })))
+}
+
+fn error_with_data<T: Serialize>(status_code: StatusCode, message: &str, data: T) -> OptimizeError {
     (
         status_code,
         Json(json!({ "message": message, "data": data })),
