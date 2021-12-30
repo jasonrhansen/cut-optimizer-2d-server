@@ -41,7 +41,7 @@ static TEST_INPUT: &str = r#"
     }
 "#;
 
-fn test_app() -> BoxRoute<Body> {
+fn test_app() -> Router<Body> {
     app(&Opt::from_iter(&[
         "cut-optimizer-2d-server",
         "--timeout",
@@ -81,7 +81,7 @@ async fn optimize_with_wrong_http_method(http_method: &str) {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    assert_eq!(resp.status(), StatusCode::METHOD_NOT_ALLOWED);
 }
 
 #[tokio::test]

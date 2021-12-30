@@ -114,11 +114,18 @@ impl From<OptimizerInput> for Optimizer {
     }
 }
 
-fn handle_error(err: BoxError) -> (StatusCode, String) {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("Something went wrong: {}", err),
-    )
+async fn handle_error(err: BoxError) -> (StatusCode, String) {
+    if err.is::<tower::timeout::error::Elapsed>() {
+        (
+            StatusCode::REQUEST_TIMEOUT,
+            "Request took too long".to_string(),
+        )
+    } else {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unhandled internal error: {}", err),
+        )
+    }
 }
 
 type OptimizeError = (StatusCode, Json<Value>);
